@@ -8,6 +8,7 @@ package websocket // import "golang.org/x/net/websocket"
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -110,6 +111,9 @@ type frameReader interface {
 
 	// PayloadType returns payload type.
 	PayloadType() byte
+
+	// IsFin returns true if the frame has the FIN bit set
+	IsFin() bool
 
 	// HeaderReader returns a reader to read header of the frame.
 	HeaderReader() io.Reader
@@ -311,6 +315,8 @@ func (cd Codec) Receive(ws *Conn, v interface{}) (err error) {
 		}
 		ws.frameReader = nil
 	}
+
+	var data bytes.Buffer
 again:
 	frame, err := ws.frameReaderFactory.NewFrameReader()
 	if err != nil {
@@ -324,11 +330,14 @@ again:
 		goto again
 	}
 	payloadType := frame.PayloadType()
-	data, err := ioutil.ReadAll(frame)
-	if err != nil {
+
+	if _, err = io.Copy(&data, frame); err != nil {
 		return err
 	}
-	return cd.Unmarshal(data, payloadType, v)
+	if !frame.IsFin() {
+		goto again
+	}
+	return cd.Unmarshal(data.Bytes(), payloadType, v)
 }
 
 func marshal(v interface{}) (msg []byte, payloadType byte, err error) {

@@ -95,6 +95,8 @@ func (frame *hybiFrameReader) Read(msg []byte) (n int, err error) {
 
 func (frame *hybiFrameReader) PayloadType() byte { return frame.header.OpCode }
 
+func (frame *hybiFrameReader) IsFin() bool { return frame.header.Fin }
+
 func (frame *hybiFrameReader) HeaderReader() io.Reader {
 	if frame.header.data == nil {
 		return nil
