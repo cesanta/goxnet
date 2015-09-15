@@ -48,14 +48,15 @@ var (
 	ErrNotImplemented        = &ProtocolError{"not implemented"}
 
 	handshakeHeader = map[string]bool{
-		"Host":                   true,
-		"Upgrade":                true,
-		"Connection":             true,
-		"Sec-Websocket-Key":      true,
-		"Sec-Websocket-Origin":   true,
-		"Sec-Websocket-Version":  true,
-		"Sec-Websocket-Protocol": true,
-		"Sec-Websocket-Accept":   true,
+		"Host":                     true,
+		"Upgrade":                  true,
+		"Connection":               true,
+		"Sec-Websocket-Key":        true,
+		"Sec-Websocket-Origin":     true,
+		"Sec-Websocket-Version":    true,
+		"Sec-Websocket-Protocol":   true,
+		"Sec-Websocket-Accept":     true,
+		"Sec-Websocket-Extensions": true,
 	}
 )
 
@@ -431,7 +432,9 @@ func hybiClientHandshake(config *Config, br *bufio.Reader, bw *bufio.Writer) (er
 	if len(config.Protocol) > 0 {
 		bw.WriteString("Sec-WebSocket-Protocol: " + strings.Join(config.Protocol, ", ") + "\r\n")
 	}
-	// TODO(ukai): send Sec-WebSocket-Extensions.
+	if len(config.Extensions) > 0 {
+		bw.WriteString("Sec-WebSocket-Extensions: " + strings.Join(config.Extensions, ", ") + "\r\n")
+	}
 	err = config.Header.WriteSubset(bw, handshakeHeader)
 	if err != nil {
 		return err
@@ -461,7 +464,22 @@ func hybiClientHandshake(config *Config, br *bufio.Reader, bw *bufio.Writer) (er
 		return ErrChallengeResponse
 	}
 	if resp.Header.Get("Sec-WebSocket-Extensions") != "" {
-		return ErrUnsupportedExtensions
+		// We MUST reject a connection if the server sent us an extension that we
+		// didn't request.
+		// TODO(imax): find a nice way to handle extension parameters too.
+		requested := map[string]bool{}
+		for _, ext := range config.Extensions {
+			requested[strings.TrimSpace(strings.SplitN(ext, ";", 2)[0])] = true
+		}
+		config.Extensions = nil
+		for _, exts := range resp.Header[http.CanonicalHeaderKey("Sec-Websocket-Extensions")] {
+			for _, ext := range strings.Split(exts, ",") {
+				if !requested[strings.TrimSpace(strings.SplitN(ext, ";", 2)[0])] {
+					return ErrUnsupportedExtensions
+				}
+				config.Extensions = append(config.Extensions, ext)
+			}
+		}
 	}
 	offeredProtocol := resp.Header.Get("Sec-WebSocket-Protocol")
 	if offeredProtocol != "" {
@@ -532,6 +550,13 @@ func (c *hybiServerHandshaker) ReadHandshake(buf *bufio.Reader, req *http.Reques
 			c.Protocol = append(c.Protocol, strings.TrimSpace(protocols[i]))
 		}
 	}
+	extensions := req.Header[http.CanonicalHeaderKey("Sec-Websocket-Extensions")]
+	c.Extensions = nil
+	for _, exts := range extensions {
+		for _, ext := range strings.Split(exts, ",") {
+			c.Extensions = append(c.Extensions, strings.TrimSpace(ext))
+		}
+	}
 	c.accept, err = getNonceAccept([]byte(key))
 	if err != nil {
 		return http.StatusInternalServerError, err
@@ -567,7 +592,9 @@ func (c *hybiServerHandshaker) AcceptHandshake(buf *bufio.Writer) (err error) {
 	if len(c.Protocol) > 0 {
 		buf.WriteString("Sec-WebSocket-Protocol: " + c.Protocol[0] + "\r\n")
 	}
-	// TODO(ukai): send Sec-WebSocket-Extensions.
+	if len(c.Extensions) > 0 {
+		buf.WriteString("Sec-WebSocket-Extensions: " + strings.Join(c.Extensions, ", ") + "\r\n")
+	}
 	if c.Header != nil {
 		err := c.Header.WriteSubset(buf, handshakeHeader)
 		if err != nil {

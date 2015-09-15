@@ -87,6 +87,9 @@ type Config struct {
 	// Additional header fields to be sent in WebSocket opening handshake.
 	Header http.Header
 
+	// WebSocket extensions.
+	Extensions []string
+
 	handshakeData map[string]string
 }
 
