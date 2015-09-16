@@ -88,7 +88,8 @@ type Config struct {
 	Header http.Header
 
 	// WebSocket extensions.
-	Extensions []string
+	InboundExtensions  []string
+	OutboundExtensions []string
 
 	handshakeData map[string]string
 }

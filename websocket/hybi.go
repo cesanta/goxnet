@@ -432,8 +432,8 @@ func hybiClientHandshake(config *Config, br *bufio.Reader, bw *bufio.Writer) (er
 	if len(config.Protocol) > 0 {
 		bw.WriteString("Sec-WebSocket-Protocol: " + strings.Join(config.Protocol, ", ") + "\r\n")
 	}
-	if len(config.Extensions) > 0 {
-		bw.WriteString("Sec-WebSocket-Extensions: " + strings.Join(config.Extensions, ", ") + "\r\n")
+	if len(config.OutboundExtensions) > 0 {
+		bw.WriteString("Sec-WebSocket-Extensions: " + strings.Join(config.OutboundExtensions, ", ") + "\r\n")
 	}
 	err = config.Header.WriteSubset(bw, handshakeHeader)
 	if err != nil {
@@ -468,16 +468,16 @@ func hybiClientHandshake(config *Config, br *bufio.Reader, bw *bufio.Writer) (er
 		// didn't request.
 		// TODO(imax): find a nice way to handle extension parameters too.
 		requested := map[string]bool{}
-		for _, ext := range config.Extensions {
+		for _, ext := range config.OutboundExtensions {
 			requested[strings.TrimSpace(strings.SplitN(ext, ";", 2)[0])] = true
 		}
-		config.Extensions = nil
+		config.InboundExtensions = nil
 		for _, exts := range resp.Header[http.CanonicalHeaderKey("Sec-Websocket-Extensions")] {
 			for _, ext := range strings.Split(exts, ",") {
 				if !requested[strings.TrimSpace(strings.SplitN(ext, ";", 2)[0])] {
 					return ErrUnsupportedExtensions
 				}
-				config.Extensions = append(config.Extensions, ext)
+				config.InboundExtensions = append(config.InboundExtensions, ext)
 			}
 		}
 	}
@@ -551,10 +551,10 @@ func (c *hybiServerHandshaker) ReadHandshake(buf *bufio.Reader, req *http.Reques
 		}
 	}
 	extensions := req.Header[http.CanonicalHeaderKey("Sec-Websocket-Extensions")]
-	c.Extensions = nil
+	c.InboundExtensions = nil
 	for _, exts := range extensions {
 		for _, ext := range strings.Split(exts, ",") {
-			c.Extensions = append(c.Extensions, strings.TrimSpace(ext))
+			c.InboundExtensions = append(c.InboundExtensions, strings.TrimSpace(ext))
 		}
 	}
 	c.accept, err = getNonceAccept([]byte(key))
@@ -592,8 +592,8 @@ func (c *hybiServerHandshaker) AcceptHandshake(buf *bufio.Writer) (err error) {
 	if len(c.Protocol) > 0 {
 		buf.WriteString("Sec-WebSocket-Protocol: " + c.Protocol[0] + "\r\n")
 	}
-	if len(c.Extensions) > 0 {
-		buf.WriteString("Sec-WebSocket-Extensions: " + strings.Join(c.Extensions, ", ") + "\r\n")
+	if len(c.OutboundExtensions) > 0 {
+		buf.WriteString("Sec-WebSocket-Extensions: " + strings.Join(c.OutboundExtensions, ", ") + "\r\n")
 	}
 	if c.Header != nil {
 		err := c.Header.WriteSubset(buf, handshakeHeader)
